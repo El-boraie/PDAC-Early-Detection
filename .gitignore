@@ -1,0 +1,9 @@
+fyp_env/
+checkpoints/
+data/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+wandb/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

@@ -1,0 +1,66 @@
+# =========================================================
+# PDAC Multimodal Risk Detection — Environment Dependencies
+# Grouped to match Tables 4, 6-12 in IR Chapter 2.4 (Technical Research)
+# Target: Python 3.13 (deviation from IR's stated 3.10 — deliberate, update
+# documentation to reflect this when you revise Chapter 2.4)
+#
+# All packages below were verified to have Python 3.13 wheels via PyPI
+# (July 2026). Version floors given, not hard pins — install fresh, confirm
+# everything imports cleanly, then run:
+#     pip freeze > requirements-lock.txt
+# and keep that lock file as your reproducible, verified record for the
+# appendix. Don't hard-pin versions you haven't actually tested together.
+# =========================================================
+
+# --- Deep Learning Core (Table 4 & 6) ---
+# torch / torchvision: install SEPARATELY first with the CUDA-matched command
+# from pytorch.org (check `nvidia-smi` for your CUDA version first).
+# torchvision supplies the pretrained ResNet-50 encoder for the U-Net backbone.
+monai>=1.4.0                   # medical-specific losses, transforms, sliding-window inference
+
+# --- Classical ML (Table 5 & 8) ---
+xgboost>=2.1.0                  # clinical branch risk classifier
+scikit-learn>=1.5.0             # splitting, preprocessing pipelines, cross-validation, metrics
+imbalanced-learn>=0.12.0        # SMOTE for clinical dataset class imbalance
+
+# --- Medical Image Processing (Table 7 — REVISED) ---
+SimpleITK>=2.4.0                # CT resampling to uniform voxel spacing
+nibabel>=5.3.0                  # loading/reading NIfTI (.nii/.nii.gz) CT volumes
+pydicom>=3.0.0                  # DICOM reading if conversion to NIfTI is needed
+opencv-python>=4.10.0           # 2D slice resizing and processing
+scikit-image>=0.24.0            # REPLACES pyradiomics (no Python 3.13 wheel, build fails
+                                 # from source per upstream GitHub issues). Used for hand-rolled
+                                 # shape (regionprops), first-order (numpy/scipy on masked
+                                 # voxels), and GLCM texture (graycomatrix/graycoprops) features.
+
+# --- Explainable AI / XAI (Table 9) ---
+grad-cam>=1.5.0                 # pytorch-grad-cam: Grad-CAM heatmaps for imaging branch (source-only
+                                 # build, pure Python, no compiler needed — this is fine)
+shap>=0.46.0                    # feature-level explanation of XGBoost predictions
+captum>=0.7.0                   # Integrated Gradients, cross-validates Grad-CAM
+lime>=0.2.0                     # model-agnostic explanations, cross-validates SHAP (source-only
+                                 # build, pure Python — fine)
+
+# --- Data Handling & Analysis (Table 10) ---
+numpy>=1.26.0                   # no longer needs the <2.0 cap now that PyRadiomics is dropped —
+                                 # but re-check SimpleITK/scikit-image compatibility if you let
+                                 # pip resolve numpy 2.x
+pandas>=2.2.0
+scipy>=1.14.0                   # statistical tests during EDA (t-tests, non-parametric tests)
+
+# --- Visualisation (Table 11) ---
+matplotlib>=3.9.0               # training curves, CT/mask visualisation, XAI figures
+seaborn>=0.13.0                 # statistical EDA plots, correlation heatmaps
+
+# --- Experiment Tracking (Table 12) ---
+wandb>=0.18.0                   # logging metrics, hyperparameters, run comparisons
+
+# --- Deployment ---
+# NOTE: Streamlit is not currently listed in IR Chapter 2.4's tech stack table.
+# Add a short justification entry for it when you revise Chapter 2 documentation,
+# since your dashboard deliverable depends on it.
+streamlit>=1.39.0
+
+# --- Notebook environment ---
+jupyter>=1.1.0
+ipykernel>=6.29.0
