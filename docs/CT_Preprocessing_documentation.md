@@ -1,11 +1,11 @@
 # CT Preprocessing Pipeline — Process, Code, and Results
 
 **Source notebook:** `src/imaging/imaging.ipynb`
-**Input:** 281 raw NIfTI CT volumes + masks (MSD Task07 Pancreas), `data/raw/Task07_Pancreas/`
+**Input:** 281 raw NIfTI CT volumes + masks (MSD Task07 Pancreas, `data/raw/Task07_Pancreas/`) **+** 80 raw NIfTI CT volumes, image-only (NIH Pancreas-CT healthy-negative addendum, `data/raw/NIH_Pancreas_CT/0024_pancreas_ct/`) — 361 patients total
 **Output:** `data/processed/` — a training-ready 2D axial slice dataset (uint8 `.npy` arrays + `manifest.csv`)
 **Depends on:** `notebooks/CT EDA.ipynb` / `docs/CT_EDA_documentation.md` — every parameter below traces back to an EDA finding or an explicit hardware constraint (4GB GPU, 50GB disk budget), none are arbitrary defaults.
 **Kernel / environment:** Python 3.13.12, venv at `C:\FYP\fyp_env`
-**Run date:** 2026-07-06. Full 281-patient run took 6.5 minutes.
+**Run date:** 2026-07-06, MSD section (281 patients, 6.5 minutes). **NIH addendum run date:** 2026-07-14, 80 NIH patients added on top (1.6 minutes) — see the NIH Dataset Addendum section below.
 
 > Draft note: every number below is from the actual executed run, not estimated.
 
@@ -218,6 +218,8 @@ val_ids, test_ids = train_test_split(
 - **Final counts:** 196 train / 42 val / 43 test patients → 50,337 / 10,586 / 11,154 slices (72,077 total)
 - **Disk usage:** 25.35 GB actual vs. 50GB budget — well within limits
 
+> **Note:** the split counts and disk usage above are the MSD-only run and remain an accurate historical record of what was saved to disk at that point. Both are **superseded** by the NIH Dataset Addendum below — the manifest's `split` column has since been re-derived over the merged 361-patient cohort, and disk usage now includes the added NIH images. MSD's saved `.npy` files themselves were never touched.
+
 ## Helper functions and pipeline functions added (code structure, not analysis)
 
 | Function | Purpose |
@@ -232,3 +234,117 @@ val_ids, test_ids = train_test_split(
 | `get_dir_size_bytes` | Actual (not estimated) disk usage check |
 
 All reused from `notebooks/CT EDA.ipynb`: `load_ct`, `load_mask`, `load_ct_mask_pair`, `patient_id_from_filename`, `mask_region_values`, `CTLoadError`.
+
+Added for the NIH addendum (see below): `nih_patient_id_from_filename` (reused from the EDA notebook), `nih_hu_window_check`, `build_merged_strata`, `merged_holdout_split`, `merged_kfold_split`.
+
+---
+
+# NIH Dataset Addendum: Healthy-Negative Cohort (Image-Only)
+
+**Why added:** the MSD section above is 100% cancer patients (`docs/CT_EDA_documentation.md` Section D) — the detection head has no true healthy-negative examples to learn a presence/absence distinction from. NIH Pancreas-CT (TCIA CT-82, 80 healthy subjects) fills that gap. Everything in this section is additive — the 281-patient MSD pipeline above is unchanged, its `.npy` files were never re-processed or moved, and its **only** modification anywhere in this addendum is the manifest's `split` column being re-derived over the merged cohort (Merged Patient Split, below).
+
+**Run date:** 2026-07-14. NIH portion (80 patients) took 1.6 minutes on top of the already-saved MSD output.
+
+**Format correction vs. an earlier plan:** an earlier version of this addendum's plan assumed NIH would arrive as a raw DICOM series needing `SimpleITK.ImageSeriesReader`/`GetGDCMSeriesFileNames`. The data actually on disk (`data/raw/NIH_Pancreas_CT/0024_pancreas_ct/images/*.nii.gz`, 80 files) is pre-converted single-file NIfTI — confirmed both by directory listing and by `docs/CT_EDA_documentation.md` Section L's provenance note (Hugging Face mirror of the original TCIA collection). No DICOM branch was built; the existing `load_ct()` nibabel loader is reused unchanged, exactly as the EDA addendum used it.
+
+**Image-only, by design:** the `segmentations/` folders shipped alongside NIH's images are multi-organ auto-segmentation output with no label-to-organ key anywhere in the repo (same EDA finding, Section L). Nothing in this pipeline loads, pairs, resamples, or references a mask for any NIH patient — the detection head only needs a patient-level healthy/cancer label, which doesn't require a mask.
+
+## NIH Integrity Gate (Image-Only)
+
+**Process:** mirrors the MSD integrity gate with everything mask-related removed — the only check possible is whether the image itself loads. No shape-match, no orientation-vs-mask, no label validation, since there's no mask to check any of that against. `lesion_volume_mm3=0.0`, `class=0` (healthy), `dataset='NIH'` are recorded per patient as **fixed** assignments, not computed from anything.
+
+**Result:** 80/80 candidates checked, **80/80 loaded successfully, 0 excluded.**
+
+## NIH HU Window Validation
+
+**Process:** the plan required confirming the [-150, +250] HU window against NIH tissue before processing. The EDA's own whole-image check (Section L6) had already flagged this as unconfirmed (0.5th/99.5th percentile -2048.0 / 384.0 HU), caveated as likely contaminated by background air dominating the low end. Before proceeding, a second, tighter check was run here: same percentile check, but excluding voxels below -500 HU first (a crude body mask) to remove that contamination.
+
+```python
+def nih_hu_window_check(img_files, img_dir, hu_min, hu_max, body_hu_floor, tolerance, stride=50):
+    values = []
+    for fname in img_files:
+        ct, _ = load_ct(fname, img_dir)
+        flat = ct.flatten()[::stride]
+        values.extend(flat[flat >= body_hu_floor].tolist())
+    p_low, p_high = np.percentile(np.array(values), [0.5, 99.5])
+    return p_low, p_high, abs(p_low - hu_min) <= tolerance and abs(p_high - hu_max) <= tolerance
+```
+
+**Result:** run against all 80 NIH volumes (0 load failures). 0.5th percentile **-457.0 HU**, 99.5th percentile **612.0 HU** — narrower than the whole-image check as expected once background air is excluded, but **still not confirmed** against [-150, +250] ± 50 HU tolerance (misses by ~307 HU low, ~362 HU high).
+
+**Decision — reviewed and made explicitly, not silently overridden:** proceed with the existing window anyway. A "body minus air" mask still includes bone, muscle, fat, and every other organ in the cross-section, not the pancreas specifically — it was never a fair proxy for a window derived from clinical pancreas/tumour HU reference ranges (25-55 / 10-40 HU). Properly resolving this needs an actual NIH pancreas mask, which doesn't exist in this data copy. This supersedes `docs/CT_EDA_documentation.md` Section L6/L8 as the final word on the HU window question for NIH — those sections said "revisit"; this is that revisit, and the answer is "proceed, with the reasoning above," not "confirmed."
+
+## Merged Patient Split (MSD + NIH)
+
+**Process:** re-derives the split over all 361 patients jointly, stratified by class so every fold contains both cancer and healthy patients — within the cancer class, the original lesion-size-quartile stratification is kept (computed only over MSD patients, so NIH's fixed 0.0 lesion volumes can't shift the quartile boundaries); NIH patients share one flat `"healthy"` stratum instead, since lesion size has no meaning for a cohort with no lesion. This **supersedes** the MSD-only `stratified_patient_split` result above for the final manifest — the original split remains an accurate record of what was used when MSD's files were saved, but those files were never moved, so their physical folder no longer necessarily matches their current logical split.
+
+**Configurable between two modes** (`SPLIT_MODE` config constant):
+- `"holdout"` — single 70/15/15 split, reusing the same double `train_test_split` pattern as the MSD-only splitter, generalized to the combined class/quartile stratification key.
+- `"kfold"` (**default**) — `StratifiedKFold(n_splits=5)` on the same key; each patient is tagged with exactly one fold label (e.g. `"fold2"`), the fold in which it's held out as test data. Chosen as the default because NIH's ~80 healthy patients are a small negative set — a single random holdout risks an unrepresentative test slice, whereas k-fold guarantees every healthy patient serves as held-out test data in exactly one fold, which is what honest CI reporting for a small cohort needs.
+
+**Result** (k-fold, k=5, 361 patients):
+
+| fold | MSD | NIH |
+|---|---|---|
+| fold0 | 57 | 16 |
+| fold1 | 56 | 16 |
+| fold2 | 56 | 16 |
+| fold3 | 56 | 16 |
+| fold4 | 56 | 16 |
+
+Both classes present in every fold; each NIH patient appears in exactly one fold's test set.
+
+## NIH Processing Loop (Image-Only)
+
+**Process:** image-only mirror of the MSD main loop — reorient → resample → clip → normalise → extract slices → save uint8. No mask is loaded, resampled, or saved anywhere in this loop, not even against a placeholder. `risk_score` is the fixed `NIH_RISK_SCORE_FIXED` (0.0) for every slice, never computed.
+
+Saved under `images/nih/` — a dataset-only folder, not a split-named one, since a patient's fold assignment can now be re-derived without moving files (the manifest's `split` column is the single source of truth for split membership; this is the same reason MSD's files don't move when its split label changes).
+
+**Result:** 80/80 patients processed, **0 processing failures**, **18,616 NIH slices** extracted.
+
+## Manifest Merge
+
+**Process:** backs up the existing MSD-only manifest first, adds `class`/`dataset` columns to its rows, overwrites their `split` value via the merged split assignment, concatenates with the new NIH rows, saves. No MSD `image_path`/`mask_path` values change — only `split`, plus the two new columns.
+
+**Result:** `manifest_msd_only_backup.csv` saved (reversible), then the merged `manifest.csv` written:
+
+| dataset | fold0 | fold1 | fold2 | fold3 | fold4 |
+|---|---|---|---|---|---|
+| MSD | 14,428 | 15,062 | 13,995 | 13,880 | 14,712 |
+| NIH | 4,126 | 3,701 | 3,744 | 3,518 | 3,527 |
+
+Total: **90,693 rows** (72,077 MSD + 18,616 NIH).
+
+## NIH Fixed-Value Confirmation
+
+**Result:** asserted, not just claimed — all 18,616 NIH manifest rows have `risk_score == 0.0` and a null `mask_path`, no exceptions.
+
+## NIH Visual QA (Image-Only)
+
+**Process:** no mask exists to overlay, so this is simpler than the MSD QA above — loads the saved uint8 slice back from disk (round-trip, not an in-memory re-plot) for 5 random NIH patients and displays it directly.
+
+**Result:** saved as `data/processed/qa_nih_preprocessed.png` — all 5 sampled patients (`nih_00042`, `nih_00028`, `nih_00033`, `nih_00007`, `nih_00010`) show correct anatomical orientation (spine centered posteriorly, bilateral kidneys visible, consistent with the MSD QA convention), plausible upper-abdominal anatomy, no flips or DICOM-assembly/resampling artifacts.
+
+## Disk Usage Recheck (MSD + NIH)
+
+**Result:** **28.89 GB** total (MSD + NIH) vs. the 50GB budget — **21.11 GB to spare**. Came in under the ~32.5GB estimate from the original plan, as expected, since no NIH mask files are stored. Actual free disk space remaining on the drive: 320.28 GB.
+
+## NIH Addendum Final Summary
+
+- **NIH integrity gate:** 80 checked, 80 passed, 0 excluded
+- **NIH processing failures:** 0
+- **HU window check (body-masked):** NOT CONFIRMED — proceeded per the documented decision above
+- **Merged split:** k-fold, k=5 — 56-57 MSD + 16 NIH patients per fold, both classes in every fold
+- **NIH risk scores:** confirmed fixed at 0.0 for all 18,616 rows, `mask_path` null for all of them
+- **Total manifest rows:** 90,693 (72,077 MSD + 18,616 NIH)
+- **Total disk usage:** 28.89 GB (budget: 50 GB)
+
+## NIH Helper and Pipeline Functions Added
+
+| Function | Purpose |
+|---|---|
+| `nih_patient_id_from_filename` | Reused from the EDA notebook — extracts NIH's short case number from its UID-based filename |
+| `nih_hu_window_check` | Body-masked (floor -500 HU) 0.5th/99.5th HU percentile check against the shared window |
+| `build_merged_strata` | Combined class + (cancer-only) lesion-quartile stratification key for the merged cohort |
+| `merged_holdout_split` | Single 70/15/15 holdout over the merged cohort, generalized `stratified_patient_split` |
+| `merged_kfold_split` | `StratifiedKFold`-based fold assignment over the merged cohort (the default split mode) |

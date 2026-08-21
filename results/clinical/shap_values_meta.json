@@ -1,0 +1,15 @@
+{
+  "expected_value": -0.7617077827453613,
+  "output_space": "raw_margin_log_odds",
+  "feature_order": [
+    "creatinine",
+    "LYVE1",
+    "REG1B",
+    "TFF1",
+    "plasma_CA19_9",
+    "age",
+    "sex"
+  ],
+  "n_rows": 590,
+  "additivity_max_abs_error": 4.76837158203125e-06
+}

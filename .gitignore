@@ -7,3 +7,5 @@ __pycache__/
 wandb/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+dashboard/store/
+.vscode/

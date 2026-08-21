@@ -1,0 +1,7 @@
+scheme,imputer,n_folds,auc_mean,auc_std,pr_auc_mean,pr_auc_std,early_recall_mean,early_recall_std,acc_mean,acc_std
+Repeated 5x10 CV,KNN,50,0.8907,0.0271,0.7898,0.0476,0.6407,0.097,0.8103,0.0319
+Repeated 5x10 CV,MICE,50,0.9081,0.0229,0.8411,0.0411,0.7217,0.1037,0.8415,0.0268
+Cohort-out,KNN,1,0.9084,,0.6289,,0.7143,,0.8643,
+Cohort-out,MICE,1,0.8375,,0.6288,,0.6786,,0.8682,
+Leave-one-site-out,KNN,4,0.8045,0.0271,0.7864,0.2265,0.704,0.1587,0.7264,0.055
+Leave-one-site-out,MICE,4,0.8195,0.0322,0.8231,0.1696,0.8078,0.1724,0.7851,0.0511

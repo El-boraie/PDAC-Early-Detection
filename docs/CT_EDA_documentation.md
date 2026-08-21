@@ -203,9 +203,15 @@ NIH's tumour-slice count is confidently 0 — true by definition for a healthy c
 
 HU distribution (20-patient sample, global — no pancreas mask to isolate organ-specific HU this pass): 0.5th percentile -2048.0 HU, 99.5th percentile 384.0 HU, vs the MSD-derived window [-150, +250]. **Flagged, not confirmed**: NIH's empirical percentiles differ from the window by more than the 50 HU tolerance — same whole-image-percentile caveat as Section G2 (background air dominates the low end), so this doesn't necessarily mean the window is wrong for NIH tissue, but the raw numbers don't confirm it either.
 
-**L7. Lesion Size — Not Applicable.** NIH patients are healthy; there is no lesion to measure, independent of mask availability. NIH patients are excluded from the lesion-size-based stratification used for MSD's train/val/test split (`docs/CT_Preprocessing_documentation.md`) — they would need their own stratification key (e.g. plain patient-level random split) when incorporated into that pipeline.
+> **Update (preprocessing pipeline, 2026-07-14):** a tighter follow-up check was run in `docs/CT_Preprocessing_documentation.md` — same percentile check, but excluding voxels below -500 HU first (a crude body mask) to remove the background-air contamination this section flagged as a likely cause. Result: -457.0 / 612.0 HU — narrower, but **still not confirmed** against tolerance. The decision made there (and this section's final word on the question): proceed with the existing window anyway, since a body-minus-air mask still isn't organ-specific and properly resolving this needs an NIH pancreas mask that doesn't exist in this data copy. See the preprocessing doc's "NIH HU Window Validation" section for the full reasoning.
+
+**L7. Lesion Size — Not Applicable.** NIH patients are healthy; there is no lesion to measure, independent of mask availability.
+
+> **Update (preprocessing pipeline, 2026-07-14):** the speculative "plain patient-level random split" mentioned in an earlier version of this note is not what was built. NIH patients instead share one flat `"healthy"` stratification bucket alongside MSD's existing lesion-quartile buckets, so the merged split (`docs/CT_Preprocessing_documentation.md`, "Merged Patient Split") is still stratified — by class first, and by lesion quartile within the cancer class only — rather than falling back to an unstratified random split for NIH.
 
 **L8. Risk-Score Validation — Deferred, Not Fabricated.** The preprocessing pipeline's risk-score formula needs a tumour mask and a pancreas mask per slice; neither exists for NIH in this data copy. This cannot be empirically validated against real mask arrays right now. **By construction**, the correct value for every NIH slice is 0 — there is no tumour label possible for a healthy patient — but this is a logical deferral, not a computed confirmation. Revisit once a genuine single-organ pancreas mask is available for NIH (e.g. from the original raw TCIA/NBIA download).
+
+> **Update (preprocessing pipeline, 2026-07-14):** implemented exactly as deferred here — every NIH slice gets a fixed `risk_score = 0.0`, asserted (not just claimed) against all 18,616 NIH manifest rows. Still a logical deferral, not an empirical confirmation, for the same reason given above.
 
 ---
 

@@ -1,12 +1,12 @@
 # =========================================================
 # PDAC Multimodal Risk Detection — Environment Dependencies
 # Grouped to match Tables 4, 6-12 in IR Chapter 2.4 (Technical Research)
-# Target: Python 3.13 (deviation from IR's stated 3.10 — deliberate, update
-# documentation to reflect this when you revise Chapter 2.4)
+# Target: Python 3.13 (deviation from IR's stated 3.10 — deliberate, see
+# docs/Tech_Stack_documentation.md)
 #
-# All packages below were verified to have Python 3.13 wheels via PyPI
-# (July 2026). Version floors given, not hard pins — install fresh, confirm
-# everything imports cleanly, then run:
+# All packages below were verified to have Python 3.13 wheels via PyPI.
+# Version floors given, not hard pins — install fresh, confirm everything
+# imports cleanly, then run:
 #     pip freeze > requirements-lock.txt
 # and keep that lock file as your reproducible, verified record for the
 # appendix. Don't hard-pin versions you haven't actually tested together.
@@ -22,6 +22,7 @@ monai>=1.4.0                   # medical-specific losses, transforms, sliding-wi
 xgboost>=2.1.0                  # clinical branch risk classifier
 scikit-learn>=1.5.0             # splitting, preprocessing pipelines, cross-validation, metrics
 imbalanced-learn>=0.12.0        # SMOTE for clinical dataset class imbalance
+joblib>=1.4.0                   # model/artifact persistence (imputers, calibrators, checkpoints)
 
 # --- Medical Image Processing (Table 7 — REVISED) ---
 SimpleITK>=2.4.0                # CT resampling to uniform voxel spacing
@@ -51,15 +52,18 @@ scipy>=1.14.0                   # statistical tests during EDA (t-tests, non-par
 # --- Visualisation (Table 11) ---
 matplotlib>=3.9.0               # training curves, CT/mask visualisation, XAI figures
 seaborn>=0.13.0                 # statistical EDA plots, correlation heatmaps
+plotly>=5.24.0                  # interactive charts in the Streamlit dashboard
 
 # --- Experiment Tracking (Table 12) ---
 wandb>=0.18.0                   # logging metrics, hyperparameters, run comparisons
 
-# --- Deployment ---
+# --- Deployment / Dashboard ---
 # NOTE: Streamlit is not currently listed in IR Chapter 2.4's tech stack table.
 # Add a short justification entry for it when you revise Chapter 2 documentation,
 # since your dashboard deliverable depends on it.
-streamlit>=1.39.0
+streamlit>=1.39.0               # clinician-facing risk dashboard (dashboard/)
+reportlab>=4.0.0                # PDF patient report generation (dashboard/report_pdf.py)
+pypdf>=5.0.0                    # PDF post-processing/merging for generated reports
 
 # --- Notebook environment ---
 jupyter>=1.1.0
